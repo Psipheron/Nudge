@@ -21,6 +21,13 @@ public class ModMenuIntegration implements ModMenuApi {
             ConfigEntryBuilder entryBuilder = builder.entryBuilder();
             ConfigCategory general = builder.getOrCreateCategory(Component.literal("General"));
 
+            // Dropdown selector to choose between Logarithmic Tracking and Nudge Mode
+            general.addEntry(entryBuilder.startEnumSelector(Component.literal("Aim Assist Mode"), ModConfig.AimMode.class, config.aimMode)
+                    .setDefaultValue(ModConfig.AimMode.LOG)
+                    .setTooltip(Component.literal("LOG = Smooth tracking | NUDGE = Snappy/Aggressive logarithmic tracking"))
+                    .setSaveConsumer(val -> config.aimMode = val)
+                    .build());
+
             general.addEntry(entryBuilder.startDoubleField(Component.literal("Max Range"), config.maxRange)
                     .setDefaultValue(4.5)
                     .setTooltip(Component.literal("Detection range limit in blocks"))
@@ -41,6 +48,15 @@ public class ModMenuIntegration implements ModMenuApi {
                     .setMax(1.0)
                     .setTooltip(Component.literal("Multiplier for logarithmic camera pull"))
                     .setSaveConsumer(val -> config.strength = val)
+                    .build());
+
+            // Tuning slider specifically targeting your new aggressive Nudge Mode snap mechanics
+            general.addEntry(entryBuilder.startDoubleField(Component.literal("Nudge Jerk Power"), config.nudgeJerkPower)
+                    .setDefaultValue(1.3)
+                    .setMin(1.0)
+                    .setMax(3.0)
+                    .setTooltip(Component.literal("Only affects NUDGE mode. Higher values increase initial crosshair snapping velocity."))
+                    .setSaveConsumer(val -> config.nudgeJerkPower = val)
                     .build());
 
             builder.setSavingRunnable(config::save);

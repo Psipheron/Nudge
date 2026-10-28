@@ -10,9 +10,24 @@ Every client tick, Nudge runs three steps:
 
 1. **Target selection** (`AimAssistLogic.findBestTarget`) — scans all players in the current world, skipping yourself, dead players, and invisible players. Each candidate is rejected if it is beyond `maxRange` or outside the `fovThreshold` cone around your view direction. Among the survivors, the one with the smallest angular offset from your crosshair wins.
 2. **Aim point selection** (`AimAssistLogic.getRandomHitboxPoint`) — picks a random point inside the target's bounding box using a Gaussian distribution biased toward center mass rather than a fixed lock-on point. The point is clamped to stay inside the hitbox, and is re-rolled when you switch targets or every 10 ticks.
-3. **Logarithmic nudge** (`AimAssistLogic.applyLogNudge`) — the angular delta to the aim point is scaled by `log(1 + delta) * strength`, so large errors produce a firm pull while small errors settle gently and never overshoot. Corrections are capped at the remaining delta and ignored below 0.05°.
+3. **Logarithmic nudge** (`AimAssistLogic.applyLogNudge`) — the angular delta to the aim point is scaled by `log(1 + delta) * strength`, so large errors produce a firm pull while small errors settle gently and never overshoot. Corrections are capped at the remaining delta and ignored inside a dead zone of half a mouse grid step (never less than 0.05°).
+
+Each nudge is then snapped onto Minecraft's mouse sensitivity grid by `MouseGridQuantizer`, so the rotation the mod applies per tick is one a real mouse movement could produce at your current sensitivity. See [Quantization](#quantization) for how sub-step corrections are preserved.
 
 Rotation changes are written directly to the player's yaw and pitch each tick.
+
+## Quantization
+
+One unit of raw mouse movement rotates the camera by `(sensitivity * 0.6 + 0.2)^3 * 8 * 0.15` degrees — about 0.16° at default sensitivity. Rounding each nudge to the nearest multiple of that step would discard every correction smaller than half a step, which at low `strength` is most of them.
+
+Instead, `MouseGridQuantizer` carries the sub-step remainder from tick to tick:
+
+- Each returned nudge is an exact multiple of the grid step, in either direction (including backwards, when carried error needs cancelling).
+- The running total rotation still tracks the unquantized logarithmic pull, because remainders are never dropped.
+- Yaw and pitch keep independent remainders.
+- Remainders are reset when you switch targets or when no target is in range, since the carried error was measured against a point that no longer applies. They survive the 10-tick aim-point re-roll of the same target, so slow accumulation isn't discarded.
+
+Because a carried remainder lets a nudge overshoot the remaining error by up to half a step, the dead zone above is sized to clear that overshoot. Without it the overshoot would flip sign each tick and the camera would buzz in place.
 
 ## Configuration
 
@@ -57,6 +72,7 @@ Mod Menu is optional and only needed for the in-game settings screen.
 - `src/main/java/com/psipheron/nudge/ModConfig.java` — JSON-backed config load/save.
 - `src/client/java/com/psipheron/nudge/NudgeClient.java` — client entrypoint; registers the end-of-tick handler and drives the aim loop.
 - `src/client/java/com/psipheron/nudge/AimAssistLogic.java` — target selection, aim point randomization, and rotation math.
+- `src/client/java/com/psipheron/nudge/MouseGridQuantizer.java` — per-axis snapping of corrections onto the mouse sensitivity grid.
 - `src/client/java/com/psipheron/nudge/ModMenuIntegration.java` — Cloth Config screen wired into Mod Menu.
 
 Note that gameplay code lives in the `client` source set (Loom's `splitEnvironmentSourceSets`), since the mod is client-only.
@@ -65,7 +81,7 @@ Note that gameplay code lives in the `client` source set (Loom's `splitEnvironme
 
 - **Players only.** Target scanning iterates `client.level.players()`, so mobs and other entities are not considered.
 - **Always active.** There is no keybind or toggle; the assist runs on every tick while a valid target is in range.
-- **Quantization is cosmetic.** `quantizeToMouseGrid` snaps corrections to Minecraft's sensitivity grid, but because rotations are applied through `setYRot`/`setXRot` rather than the mouse input path, the snapping has no functional effect.
+- **Quantized rotations do not go through the mouse path.** The applied deltas are grid-aligned, but they are written with `setYRot`/`setXRot`, so the client's own mouse-delta handling never sees them. Quantization makes the per-tick step plausible, not the final camera angle: the accumulated rotation is not grid-aligned because the base angle it started from isn't. Anything downstream that inspects raw mouse deltas (server-side anti-cheat, for example) sees nothing.
 - **Target range uses feet position.** `findBestTarget` measures distance to the entity's base position rather than its hitbox center, so effective range is slightly shorter than `maxRange` implies.
 
 ## License

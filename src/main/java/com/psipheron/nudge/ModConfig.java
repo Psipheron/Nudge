@@ -16,10 +16,17 @@ public class ModConfig {
             "nudge_config.json"
     );
 
+    public enum AimMode {
+        LOG,    // Smooth logarithmic tracking
+        NUDGE   // Aggressive logarithmic tracking with high initial jerk/snap
+    }
+
+    public AimMode aimMode = AimMode.LOG; 
     public double maxRange = 4.5;
     public double fovThreshold = 35.0;
     public double strength = 0.15;
     public double logBase = 2.0;
+    public double nudgeJerkPower = 1.3; // Higher values make Nudge Mode snap onto targets much faster from a distance
 
     private static ModConfig INSTANCE;
 
